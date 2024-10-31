@@ -24,54 +24,66 @@ function get_links_from_source() {
     $html = @file_get_contents($sourceUrl);
 
     if ($html === false) {
-        custom_log("Failed to retrieve content from $sourceUrl");
+        custom_log("daily-link-updater: Failed to retrieve content from $sourceUrl");
         return [];
     }
 
-    preg_match_all('/<a href="(https:\/\/example\.com\/reward-link[^"]+)"/', $html, $matches);
-    return $matches[1]; // Returns an array of links
+    preg_match_all('/<a href="(https:\/\/mply\.io\/[^"]+)"/', $html, $matches);
+    return array_slice($matches[1], 0, 4); // Returns the first 4 links
 }
 
-function validate_link($url) {
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
-    curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    return $httpCode === 200;
-}
 
 function daily_update_links() {
+    // Specify the post ID of the post you want to update
+    $post_id_to_update = 1767; // Replace with your actual post ID
+
+    // Fetch the new links from the external source
     $links = get_links_from_source();
     if (empty($links)) {
-        error_log('No links found.');
+        custom_log('No links found.');
         return;
     }
 
-    // Get posts with game links (assuming these are stored with specific IDs or categories)
-    $query = new WP_Query(array('category_name' => 'game-rewards', 'posts_per_page' => -1));
-    while ($query->have_posts()) {
-        $query->the_post();
-        $post_id = get_the_ID();
-        $content = get_the_content();
-
-        // Find and replace only button links in a specific section
-        foreach ($links as $link) {
-            if (validate_link($link)) {
-                $content = preg_replace('/<a href="old_link">/', '<a href="' . $link . '">', $content, 1);
-            } else {
-                error_log("Link validation failed for: $link");
-            }
-        }
-
-        wp_update_post(array(
-            'ID' => $post_id,
-            'post_content' => $content,
-        ));
+    // Get the specific post to update
+    $post = get_post($post_id_to_update);
+    
+    // Log the post object and content for debugging
+    if (!$post) {
+        custom_log("Post with ID $post_id_to_update not found.");
+        return;
     }
-    wp_reset_postdata();
+
+    $content = $post->post_content;
+
+    // Log the original post content
+    custom_log("Original Post Content: " . $content);
+
+    // Loop through the fetched links and update only bit.ly links
+    foreach ($links as $link) {
+        // Log the link being processed
+        custom_log("Processing link: $link");
+
+        // Update links that are inside the button structure
+        // Use a pattern that captures the caption
+        $pattern = '/<a\s+href="https:\/\/bit\.ly\/[^"]+">([^<]*)<\/a>/';
+        $replacement = '<a href="' . $link . '">$1</a>'; // Preserve the caption
+        
+        // Replace only the first match
+        $content = preg_replace($pattern, $replacement, $content, 1);
+        
+        custom_log("Updated link in content: $link");
+    }
+
+    custom_log("Updated Post Content: " . $content);
+
+    // Update the post with the new content
+    wp_update_post(array(
+        'ID' => $post_id_to_update,
+        'post_content' => $content,
+    ));
 }
+
+
 
 function custom_log($message) {
     $logDir = WP_CONTENT_DIR . '/plugin-logs';
@@ -82,4 +94,4 @@ function custom_log($message) {
     $logfile = $logDir . '/link-updater.log';
     file_put_contents($logfile, date('[Y-m-d H:i:s] ') . $message . PHP_EOL, FILE_APPEND);
 }
->
+
