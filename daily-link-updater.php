@@ -174,74 +174,124 @@ function daily_link_updater_dashboard() {
     <?php
 }
 
-function get_links_from_source() {
-    $sourceUrl = 'https://mosttechs.com/monopoly-go-free-dice/';
-    $html = @file_get_contents($sourceUrl);
 
+function get_links_from_source($sourceUrl) {
+    $html = @file_get_contents($sourceUrl);
     if ($html === false) {
-        custom_log("daily-link-updater: Failed to retrieve content from $sourceUrl");
+        custom_log("Failed to retrieve content from $sourceUrl", 'error');
         return [];
     }
-
-    preg_match_all('/<a href="(https:\/\/mply\.io\/[^"]+)"/', $html, $matches);
-    return array_slice($matches[1], 0, 4); // Returns the first 4 links
+    
+    $today_links = [];
+    $today_date = date('j.n.Y');  // Current date in the format 1.11.2024
+    $alt_date_format = date('jS F, Y');  // Current date in the format 1st November, 2024
+    
+    if (strpos($sourceUrl, 'mosttechs.com') !== false) {
+        preg_match_all('/<a\s+href="(https:\/\/go\.matchmasters\.io\/[^"]+)".*?>.*?(' . 
+            preg_quote($today_date, '/') . '|' . preg_quote($alt_date_format, '/') . ')/i', $html, $matches);
+        $today_links = $matches[1];
+        custom_log("Fetched " . count($today_links) . " links from mosttechs.com: " . implode(', ', $today_links));
+    } elseif (strpos($sourceUrl, 'rezortricks.com') !== false) {
+        // Debug the content we're searching through
+        custom_log("Searching for links in rezortricks.com content");
+        
+        // First, find the section with today's date using span ID
+        $date_pattern = '<span id="Hit_It_Rich_Todays_Free_Coins_Link-_1st_November_2024">';
+        $pos = strpos($html, $date_pattern);
+        
+        if ($pos !== false) {
+            // Find the next h4 tag to determine section end
+            $section_start = $pos;
+            $next_h4_pos = strpos($html, '<h4', $pos + strlen($date_pattern));
+            $section_end = $next_h4_pos !== false ? $next_h4_pos : strlen($html);
+            
+            // Extract the section content
+            $section_content = substr($html, $section_start, $section_end - $section_start);
+            custom_log("Found section for 1st November, 2024");
+            
+            // Extract links from the section
+            preg_match_all('/<a href="(https:\/\/hititrich\.onelink\.me\/[^"]+)"[^>]*>/i', 
+                $section_content, $matches);
+            
+            if (!empty($matches[1])) {
+                $today_links = array_reverse($matches[1]); // Reverse to get correct order
+                custom_log("Fetched " . count($today_links) . " links from rezortricks.com: " . implode(', ', $today_links));
+            } else {
+                custom_log("No links found in the section", 'warning');
+            }
+        } else {
+            custom_log("Could not find section with ID 'Hit_It_Rich_Todays_Free_Coins_Link-_1st_November_2024'", 'warning');
+        }
+    }
+    
+    return $today_links;
 }
 
-
-// Modified update function to track last run time
 function daily_update_links() {
-        // Specify the post ID of the post you want to update
-    $post_id_to_update = 1767; // Replace with your actual post ID
-
-    // Fetch the new links from the external source
-    $links = get_links_from_source();
-    if (empty($links)) {
-        custom_log('No links found.');
-        return;
-    }
-
-    // Get the specific post to update
-    $post = get_post($post_id_to_update);
+    $post_sources = [
+        1790 => ['url' => 'https://mosttechs.com/match-masters-free-boosters/'],
+        1767 => ['url' => 'https://rezortricks.com/hit-it-rich-free-coins/'],
+    ];
     
-    // Log the post object and content for debugging
-    if (!$post) {
-        custom_log("Post with ID $post_id_to_update not found.");
-        return;
-    }
-
-    $content = $post->post_content;
-
-    // Log the original post content
-    custom_log("Original Post Content: " . $content);
-
-    // Loop through the fetched links and update only bit.ly links
-    foreach ($links as $link) {
-        // Log the link being processed
-        custom_log("Processing link: $link");
-
-        // Update links that are inside the button structure
-        // Use a pattern that captures the caption
-        $pattern = '/<a\s+href="https:\/\/bit\.ly\/[^"]+">([^<]*)<\/a>/';
-        $replacement = '<a href="' . $link . '">$1</a>'; // Preserve the caption
+    foreach ($post_sources as $post_id => $config) {
+        $source_url = $config['url'];
+        $links = get_links_from_source($source_url);
         
-        // Replace only the first match
-        $content = preg_replace($pattern, $replacement, $content, 1);
+        if (empty($links)) {
+            custom_log("No links found for Post ID $post_id from source $source_url.", 'warning');
+            continue;
+        }
         
-        custom_log("Updated link in content: $link");
+        $post = get_post($post_id);
+        if (!$post) {
+            custom_log("Post with ID $post_id not found.", 'error');
+            continue;
+        }
+        
+        $content = $post->post_content;
+        custom_log("Processing Post ID $post_id");
+        
+        if ($post_id == 1790) {
+            // Match Masters post processing
+            $pattern = '/(<strong>'.date('F j, Y').'<\/strong>.*?)(<a\s+href="https:\/\/go\.matchmasters\.io\/[^"]+">(.*?)<\/a>)/is';
+            foreach ($links as $index => $link) {
+                $replacement = '$1<a href="' . $link . '" data-type="link" data-id="' . $link . '">$3</a>';
+                $content = preg_replace($pattern, $replacement, $content, 1);
+                custom_log("Updated Match Masters link #{$index}: $link");
+            }
+        } elseif ($post_id == 1767) {
+            // Find all existing Hit It Rich links
+            preg_match_all('/<a href="(https:\/\/hititrich\.onelink\.me\/[^"]+)"[^>]*>.*?<\/a>/', $content, $existing_matches);
+            
+            foreach ($existing_matches[0] as $index => $full_match) {
+                if (isset($links[$index])) {
+                    $new_link = $links[$index];
+                    $pattern = preg_quote($full_match, '/');
+                    $replacement = str_replace($existing_matches[1][$index], $new_link, $full_match);
+                    $content = preg_replace('/' . $pattern . '/', $replacement, $content, 1);
+                    custom_log("Updated Hit It Rich link #{$index}: replaced with $new_link");
+                }
+            }
+        }
+        
+        // Update the post
+        $update_result = wp_update_post(array(
+            'ID' => $post_id,
+            'post_content' => $content,
+        ));
+        
+        if (is_wp_error($update_result)) {
+            custom_log("Failed to update post $post_id: " . $update_result->get_error_message(), 'error');
+        } else {
+            custom_log("Successfully updated post $post_id");
+        }
     }
-
-    custom_log("Updated Post Content: " . $content);
-
-    // Update the post with the new content
-    wp_update_post(array(
-        'ID' => $post_id_to_update,
-        'post_content' => $content,
-    ));
-
     
-    // Update last run time
     update_option('link_updater_last_run', current_time('mysql'));
 }
+
+
+
 
 // Modified logging function to handle different message types
 function custom_log($message, $type = 'info') {
