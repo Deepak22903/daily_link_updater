@@ -1,3 +1,4 @@
+
 <?php
 /*
 Plugin Name: Daily Link Updater
@@ -52,7 +53,7 @@ function daily_link_updater_dashboard() {
             </div>
             <div class="card">
                 <h3>Target Post ID</h3>
-                <p><?php echo get_option('link_updater_post_id', '1767'); ?></p>
+                <p><?php echo get_option('link_updater_post_id', '419'); ?></p>
             </div>
             <div class="card">
                 <h3>Source Status</h3>
@@ -176,25 +177,33 @@ function daily_link_updater_dashboard() {
 
 class PostLinkUpdater {
     private $post_configs = [
-    1790 => [
-        'url' => 'https://mosttechs.com/match-masters-free-boosters/',
-        'type' => 'match_masters',
-        'link_patterns' => [
-            'https://go.matchmasters.io/',
-            // Add any additional Match Masters patterns here
+        297 => [
+            'url' => 'https://mosttechs.com/match-masters-free-boosters/',
+            'type' => 'match_masters',
+            'link_patterns' => [
+                'https://go.matchmasters.io/',
+                // Add any additional Match Masters patterns here
+            ],
+            'link_text' => 'Collect Free Boosters and Gifts'
         ],
-        'link_text' => 'Claim Rewards'
-    ],
-    1767 => [
-        'url' => 'https://rezortricks.com/hit-it-rich-free-coins/',
-        'type' => 'hit_it_rich',
-        'link_patterns' => [
-            'https://hititrich.onelink.me/',
-            'https://web.hititrich.zynga.com/client/mobile_landing.php'
+        419 => [
+            'url' => 'https://rezortricks.com/hit-it-rich-free-coins/',
+            'type' => 'hit_it_rich',
+            'link_patterns' => [
+                'https://hititrich.onelink.me/',
+                'https://web.hititrich.zynga.com/client/mobile_landing.php'
+            ],
+            'link_text' => 'Collect 2500+ Free Coins'
         ],
-        'link_text' => 'Collect Reward'
-    ],
-];
+        271 => [
+            'url' => 'https://mosttechs.com/zynga-poker-free-chips-link/',
+            'type' => 'zynga_poker',
+            'link_patterns' => [
+                'http://zynga.live/'
+            ],
+            'link_text' => 'Collect 3X Free Chips'
+        ]
+    ];
 
     private $date_formats = [
         'display' => 'F j, Y',          // November 1, 2024
@@ -220,15 +229,36 @@ class PostLinkUpdater {
             case 'hit_it_rich':
                 $today_links = $this->extract_hit_it_rich_links($html);
                 break;
-            // Add new cases here for different post types
+            case 'zynga_poker':
+                $today_links = $this->extract_zynga_poker_links($html);
+                break;
         }
 
         return $today_links;
     }
+    
+    private function extract_zynga_poker_links($html) {
+        $links = [];
+        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
+        
+        foreach ($this->post_configs[271]['link_patterns'] as $pattern) {
+            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
+                preg_quote($date_pattern, '/') . '/i';
+            
+            preg_match_all($regex_pattern, $html, $matches);
+            if (!empty($matches[1])) {
+                $links = array_merge($links, $matches[1]);
+            }
+        }
+        
+        $links = array_unique($links); // Remove duplicates
+        custom_log("Fetched " . count($links) . " links for Zynga Poker from mosttechs.com: " . implode(', ', $links));
+        return $links;
+    }
 
     private function extract_match_masters_links($html) {
     $links = [];
-    foreach ($this->post_configs[1790]['link_patterns'] as $pattern) {
+    foreach ($this->post_configs[297]['link_patterns'] as $pattern) {
         $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?(' . 
             preg_quote(date($this->date_formats['dot']), '/') . '|' . 
             preg_quote(date($this->date_formats['ordinal']), '/') . ')/i';
@@ -259,7 +289,7 @@ private function extract_hit_it_rich_links($html) {
     $section_content = substr($html, $section_start, $section_end - $section_start);
 
     $links = [];
-    foreach ($this->post_configs[1767]['link_patterns'] as $pattern) {
+    foreach ($this->post_configs[419]['link_patterns'] as $pattern) {
         preg_match_all('/<a href="(' . preg_quote($pattern, '/') . '[^"]+)"[^>]*>/i', 
             $section_content, $matches);
         
@@ -355,7 +385,7 @@ private function extract_hit_it_rich_links($html) {
             return '';
         }
         
-        $html = "<ul>\n";
+        $html = "<ol>\n";
         foreach ($links as $link) {
             $html .= sprintf(
                 '    <li><a href="%s" target="_blank" rel="noopener">%s</a></li>' . "\n",
@@ -363,7 +393,7 @@ private function extract_hit_it_rich_links($html) {
                 $link_text
             );
         }
-        return $html . "</ul>\n";
+        return $html . "</ol>\n";
     }
     
     // Helper method to validate configuration
