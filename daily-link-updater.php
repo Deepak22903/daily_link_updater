@@ -1,4 +1,3 @@
-
 <?php
 /*
 Plugin Name: Daily Link Updater
@@ -175,121 +174,270 @@ function daily_link_updater_dashboard() {
 }
 
 
-function get_links_from_source($sourceUrl) {
-    $html = @file_get_contents($sourceUrl);
-    if ($html === false) {
-        custom_log("Failed to retrieve content from $sourceUrl", 'error');
-        return [];
+class PostLinkUpdater {
+    private $post_configs = [
+    1790 => [
+        'url' => 'https://mosttechs.com/match-masters-free-boosters/',
+        'type' => 'match_masters',
+        'link_patterns' => [
+            'https://go.matchmasters.io/',
+            // Add any additional Match Masters patterns here
+        ],
+        'link_text' => 'Claim Rewards'
+    ],
+    1767 => [
+        'url' => 'https://rezortricks.com/hit-it-rich-free-coins/',
+        'type' => 'hit_it_rich',
+        'link_patterns' => [
+            'https://hititrich.onelink.me/',
+            'https://web.hititrich.zynga.com/client/mobile_landing.php'
+        ],
+        'link_text' => 'Collect Reward'
+    ],
+];
+
+    private $date_formats = [
+        'display' => 'F j, Y',          // November 1, 2024
+        'dot' => 'j.n.Y',              // 1.11.2024
+        'ordinal' => 'jS F, Y',        // 1st November, 2024
+        'underscore' => 'jS_F_Y',      // 1st_November_2024
+        'id' => 'F_j_Y'                // November_1_2024
+    ];
+
+    public function get_links_from_source($source_url, $config) {
+        $html = @file_get_contents($source_url);
+        if ($html === false) {
+            custom_log("Failed to retrieve content from $source_url", 'error');
+            return [];
+        }
+
+        $today_links = [];
+        
+        switch ($config['type']) {
+            case 'match_masters':
+                $today_links = $this->extract_match_masters_links($html);
+                break;
+            case 'hit_it_rich':
+                $today_links = $this->extract_hit_it_rich_links($html);
+                break;
+            // Add new cases here for different post types
+        }
+
+        return $today_links;
     }
-    
-    $today_links = [];
-    $today_date = date('j.n.Y');  // Current date in the format 1.11.2024
-    $alt_date_format = date('jS F, Y');  // Current date in the format 1st November, 2024
-    
-    if (strpos($sourceUrl, 'mosttechs.com') !== false) {
-        preg_match_all('/<a\s+href="(https:\/\/go\.matchmasters\.io\/[^"]+)".*?>.*?(' . 
-            preg_quote($today_date, '/') . '|' . preg_quote($alt_date_format, '/') . ')/i', $html, $matches);
-        $today_links = $matches[1];
-        custom_log("Fetched " . count($today_links) . " links from mosttechs.com: " . implode(', ', $today_links));
-    } elseif (strpos($sourceUrl, 'rezortricks.com') !== false) {
-        // Debug the content we're searching through
-        custom_log("Searching for links in rezortricks.com content");
+
+    private function extract_match_masters_links($html) {
+    $links = [];
+    foreach ($this->post_configs[1790]['link_patterns'] as $pattern) {
+        $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?(' . 
+            preg_quote(date($this->date_formats['dot']), '/') . '|' . 
+            preg_quote(date($this->date_formats['ordinal']), '/') . ')/i';
         
-        // First, find the section with today's date using span ID
-        $date_pattern = '<span id="Hit_It_Rich_Todays_Free_Coins_Link-_1st_November_2024">';
-        $pos = strpos($html, $date_pattern);
-        
-        if ($pos !== false) {
-            // Find the next h4 tag to determine section end
-            $section_start = $pos;
-            $next_h4_pos = strpos($html, '<h4', $pos + strlen($date_pattern));
-            $section_end = $next_h4_pos !== false ? $next_h4_pos : strlen($html);
-            
-            // Extract the section content
-            $section_content = substr($html, $section_start, $section_end - $section_start);
-            custom_log("Found section for 1st November, 2024");
-            
-            // Extract links from the section
-            preg_match_all('/<a href="(https:\/\/hititrich\.onelink\.me\/[^"]+)"[^>]*>/i', 
-                $section_content, $matches);
-            
-            if (!empty($matches[1])) {
-                $today_links = array_reverse($matches[1]); // Reverse to get correct order
-                custom_log("Fetched " . count($today_links) . " links from rezortricks.com: " . implode(', ', $today_links));
-            } else {
-                custom_log("No links found in the section", 'warning');
-            }
-        } else {
-            custom_log("Could not find section with ID 'Hit_It_Rich_Todays_Free_Coins_Link-_1st_November_2024'", 'warning');
+        preg_match_all($regex_pattern, $html, $matches);
+        if (!empty($matches[1])) {
+            $links = array_merge($links, $matches[1]);
         }
     }
     
-    return $today_links;
+    $links = array_unique($links); // Remove duplicates
+    custom_log("Fetched " . count($links) . " links from mosttechs.com: " . implode(', ', $links));
+    return $links;
 }
 
-function daily_update_links() {
-    $post_sources = [
-        1790 => ['url' => 'https://mosttechs.com/match-masters-free-boosters/'],
-        1767 => ['url' => 'https://rezortricks.com/hit-it-rich-free-coins/'],
-    ];
+private function extract_hit_it_rich_links($html) {
+    $date_pattern = '<span id="Hit_It_Rich_Todays_Free_Coins_Link-_' . date($this->date_formats['underscore']) . '">';
+    $pos = strpos($html, $date_pattern);
     
-    foreach ($post_sources as $post_id => $config) {
-        $source_url = $config['url'];
-        $links = get_links_from_source($source_url);
+    if ($pos === false) {
+        custom_log("Could not find section with today's date pattern", 'warning');
+        return [];
+    }
+
+    $section_start = $pos;
+    $next_h4_pos = strpos($html, '<h4', $pos + strlen($date_pattern));
+    $section_end = $next_h4_pos !== false ? $next_h4_pos : strlen($html);
+    $section_content = substr($html, $section_start, $section_end - $section_start);
+
+    $links = [];
+    foreach ($this->post_configs[1767]['link_patterns'] as $pattern) {
+        preg_match_all('/<a href="(' . preg_quote($pattern, '/') . '[^"]+)"[^>]*>/i', 
+            $section_content, $matches);
         
+        if (!empty($matches[1])) {
+            $links = array_merge($links, $matches[1]);
+        }
+    }
+    
+    $links = array_unique($links);
+    $links = array_reverse($links);
+    
+    custom_log("Fetched " . count($links) . " links from rezortricks.com: " . implode(', ', $links));
+    return $links;
+}
+
+    private function update_post_content($content, $today_heading, $links, $config) {
+    $today_date = date($this->date_formats['display']);
+    $content_modified = false;
+    
+    // Check if today's heading exists
+    if (preg_match('/<h4[^>]*>.*?' . preg_quote($today_date, '/') . '.*?<\/h4>/s', $content, $heading_matches, PREG_OFFSET_CAPTURE)) {
+        $heading_pos = $heading_matches[0][1];
+        $heading_end = $heading_pos + strlen($heading_matches[0][0]);
+        
+        $next_heading_pos = stripos($content, '<h4', $heading_end);
+        $section_end = $next_heading_pos !== false ? $next_heading_pos : strlen($content);
+        
+        $current_section = substr($content, $heading_pos, $section_end - $heading_pos);
+        
+        // Count existing links for all patterns
+        $existing_links_count = 0;
+        foreach ($config['link_patterns'] as $pattern) {
+            preg_match_all('/<a href="' . preg_quote($pattern, '/') . '[^"]+"/i', $current_section, $existing_matches);
+            $existing_links_count += count($existing_matches[0]);
+        }
+        
+        if (count($links) > $existing_links_count) {
+            $new_links = array_slice($links, $existing_links_count);
+            
+            if (preg_match('/<ul>(.*?)<\/ul>/s', $current_section)) {
+                $ul_end_pos = strrpos($current_section, '</ul>');
+                $additional_links_html = '';
+                foreach ($new_links as $link) {
+                    $additional_links_html .= sprintf(
+                        '<li><a href="%s" target="_blank" rel="noopener">%s</a></li>' . "\n",
+                        esc_url($link),
+                        $config['link_text']
+                    );
+                }
+                $updated_section = substr_replace($current_section, $additional_links_html, $ul_end_pos, 0);
+            } else {
+                $updated_section = $current_section . $this->generate_links_html($new_links, $config['link_text']);
+            }
+            
+            $content = substr_replace($content, $updated_section, $heading_pos, $section_end - $heading_pos);
+            custom_log("Added " . count($new_links) . " new links to existing section for $today_date");
+            $content_modified = true;
+        } else {
+            custom_log("Section for $today_date is already up to date. No new links to add.", 'info');
+        }
+    } else {
+        if (preg_match('/<h4[^>]*>/', $content, $matches, PREG_OFFSET_CAPTURE)) {
+            $first_h4_pos = $matches[0][1];
+            $new_section = $today_heading . "\n" . $this->generate_links_html($links, $config['link_text']);
+            $content = substr_replace($content, $new_section, $first_h4_pos, 0);
+            custom_log("Created new section for $today_date at the top");
+            $content_modified = true;
+        } else {
+            $content = $today_heading . "\n" . $this->generate_links_html($links, $config['link_text']) . $content;
+            custom_log("No existing headings found, added new section at the beginning");
+            $content_modified = true;
+        }
+    }
+    
+    return ['content' => $content, 'modified' => $content_modified];
+}
+
+    private function generate_heading($date) {
+        return sprintf(
+            '<h4 class="wp-block-heading has-text-color has-link-color wp-elements-f2ac3daac33216e856b046520ec53ee3" style="color:#008effe6">' .
+            '<span class="ez-toc-section" id="%s" ez-toc-data-id="#%s"></span>' .
+            '<strong>%s</strong>' .
+            '<span class="ez-toc-section-end"></span>' .
+            '</h4>',
+            str_replace(' ', '_', $date),
+            str_replace(' ', '_', $date),
+            $date
+        );
+    }
+
+    private function generate_links_html($links, $link_text) {
         if (empty($links)) {
-            custom_log("No links found for Post ID $post_id from source $source_url.", 'warning');
+            return '';
+        }
+        
+        $html = "<ul>\n";
+        foreach ($links as $link) {
+            $html .= sprintf(
+                '    <li><a href="%s" target="_blank" rel="noopener">%s</a></li>' . "\n",
+                esc_url($link),
+                $link_text
+            );
+        }
+        return $html . "</ul>\n";
+    }
+    
+    // Helper method to validate configuration
+private function validate_config($config) {
+    $required_fields = ['url', 'type', 'link_patterns', 'link_text'];
+    foreach ($required_fields as $field) {
+        if (!isset($config[$field])) {
+            custom_log("Missing required configuration field: $field", 'error');
+            return false;
+        }
+    }
+    
+    if (!is_array($config['link_patterns']) || empty($config['link_patterns'])) {
+        custom_log("link_patterns must be a non-empty array", 'error');
+        return false;
+    }
+    
+    return true;
+}
+
+    public function run_updates() {
+    $updates_made = false;
+    
+    foreach ($this->post_configs as $post_id => $config) {
+        // Validate configuration
+        if (!$this->validate_config($config)) {
+            custom_log("Invalid configuration for post ID $post_id. Skipping.", 'error');
             continue;
         }
         
+        $links = $this->get_links_from_source($config['url'], $config);
+        
+        if (empty($links)) {
+            custom_log("No links found for Post ID $post_id from source {$config['url']}.", 'warning');
+            continue;
+        }
+
         $post = get_post($post_id);
         if (!$post) {
             custom_log("Post with ID $post_id not found.", 'error');
             continue;
         }
+
+        $today_heading = $this->generate_heading(date($this->date_formats['display']));
+        $update_result = $this->update_post_content($post->post_content, $today_heading, $links, $config);
         
-        $content = $post->post_content;
-        custom_log("Processing Post ID $post_id");
-        
-        if ($post_id == 1790) {
-            // Match Masters post processing
-            $pattern = '/(<strong>'.date('F j, Y').'<\/strong>.*?)(<a\s+href="https:\/\/go\.matchmasters\.io\/[^"]+">(.*?)<\/a>)/is';
-            foreach ($links as $index => $link) {
-                $replacement = '$1<a href="' . $link . '" data-type="link" data-id="' . $link . '">$3</a>';
-                $content = preg_replace($pattern, $replacement, $content, 1);
-                custom_log("Updated Match Masters link #{$index}: $link");
+        if ($update_result['modified']) {
+            $post_update = wp_update_post([
+                'ID' => $post_id,
+                'post_content' => $update_result['content'],
+            ]);
+
+            if (is_wp_error($post_update)) {
+                custom_log("Failed to update post $post_id: " . $post_update->get_error_message(), 'error');
+            } else {
+                custom_log("Successfully updated post $post_id");
+                $updates_made = true;
             }
-        } elseif ($post_id == 1767) {
-            // Find all existing Hit It Rich links
-            preg_match_all('/<a href="(https:\/\/hititrich\.onelink\.me\/[^"]+)"[^>]*>.*?<\/a>/', $content, $existing_matches);
-            
-            foreach ($existing_matches[0] as $index => $full_match) {
-                if (isset($links[$index])) {
-                    $new_link = $links[$index];
-                    $pattern = preg_quote($full_match, '/');
-                    $replacement = str_replace($existing_matches[1][$index], $new_link, $full_match);
-                    $content = preg_replace('/' . $pattern . '/', $replacement, $content, 1);
-                    custom_log("Updated Hit It Rich link #{$index}: replaced with $new_link");
-                }
-            }
-        }
-        
-        // Update the post
-        $update_result = wp_update_post(array(
-            'ID' => $post_id,
-            'post_content' => $content,
-        ));
-        
-        if (is_wp_error($update_result)) {
-            custom_log("Failed to update post $post_id: " . $update_result->get_error_message(), 'error');
-        } else {
-            custom_log("Successfully updated post $post_id");
         }
     }
     
-    update_option('link_updater_last_run', current_time('mysql'));
+    if ($updates_made) {
+        update_option('link_updater_last_run', current_time('mysql'));
+    } else {
+        custom_log("No updates needed. All posts are up to date.", 'info');
+    }
+    }
 }
 
+// Usage
+function daily_update_links() {
+    $updater = new PostLinkUpdater();
+    $updater->run_updates();
+}
 
 
 
