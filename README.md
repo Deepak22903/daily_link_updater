@@ -49,6 +49,44 @@ The **Daily Link Updater** is a WordPress plugin designed to automate the proces
   - **Link Validation**: Checks that each link is active before updating.
   - **Content Update**: Replaces old links in the posts' button sections with new, validated links.
 
+# Adding a New Post Type
+
+To extend the functionality by adding a new post type, follow these steps:
+
+1. **Add a New Entry to `$post_configs`**
+
+   Define the configuration for the new post type in `$post_configs`. Use the following structure, substituting with your post details:
+
+   ```php
+   'new_post_id' => [
+       'url' => 'https://example.com/your-post/',
+       'type' => 'new_post_type',
+       'link_pattern' => 'https://example.com/links/',
+       'link_text' => 'Your Link Text'
+   ]
+   ```
+
+2. **Update the Switch Statement**
+
+   Add a new case in the existing `switch` statement to handle the new post type. This step ensures that the link extraction logic is correctly applied to your post type.
+
+   ```php
+   case 'new_post_type':
+       $today_links = $this->extract_new_post_type_links($html);
+       break;
+   ```
+
+3. **Create a New Link Extraction Method**
+
+   If your new post type requires a unique pattern for extracting links, create a new method to handle this logic. Define the custom extraction logic inside the method as shown below:
+
+   ```php
+   private function extract_new_post_type_links($html) {
+       // Your custom extraction logic here
+       return $links;
+   }
+   ```
+
 ## Troubleshooting
 
 - **Link Validation Fails**: Ensure that the links are live and accessible. The plugin skips any failed link updates and logs the issue.
