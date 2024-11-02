@@ -1,32 +1,41 @@
-
 <?php
 /*
 Plugin Name: Daily Link Updater
-Description: Automates the update of one-time-use reward links in posts.
+Plugin URI: http://example.com
+Description: A plugin to update links daily.
 Version: 1.0
+Author: Deepak Shitole
+Author URI: https://peekdeep.com/author/deepak/
+License: GPL2
 */
 
-// Enqueue admin styles
-function link_updater_admin_styles() {
-    wp_enqueue_style('wp-admin');
-    wp_enqueue_style('link-updater-admin', plugins_url('css/admin-style.css', __FILE__));
-}
-add_action('admin_enqueue_scripts', 'link_updater_admin_styles');
-
-// Create admin menu
+// Add main menu page
 function daily_link_updater_menu() {
     add_menu_page(
-        'Link Updater',
-        'Link Updater',
-        'manage_options',
-        'link-updater',
-        'daily_link_updater_dashboard',
-        'dashicons-update'
+        'Daily Link Updater', // Page title
+        'Link Updater', // Menu title
+        'manage_options', // Capability required
+        'link-updater', // Menu slug
+        'daily_link_updater_dashboard', // Function to display the page
+        'dashicons-update', // Icon (optional)
+        30 // Position in menu (optional)
     );
 }
 add_action('admin_menu', 'daily_link_updater_menu');
 
-// Dashboard main function
+// Add submenu pages
+function daily_link_updater_submenus() {
+    add_submenu_page(
+        'link-updater', // Parent slug
+        'Manage Posts', // Page title
+        'Manage Posts', // Menu title
+        'manage_options', // Capability required
+        'link-updater-posts', // Menu slug
+        'daily_link_updater_posts_page' // Function to display the page
+    );
+}
+add_action('admin_menu', 'daily_link_updater_submenus');
+
 function daily_link_updater_dashboard() {
     // Process form submission
     if (isset($_POST['start_update'])) {
@@ -40,6 +49,11 @@ function daily_link_updater_dashboard() {
     // Get last update time
     $lastUpdate = get_option('link_updater_last_run', 'Never');
     
+    // Get configured posts count
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'link_updater_posts';
+    $posts_count = $wpdb->get_var("SELECT COUNT(*) FROM $table_name");
+    
     // Dashboard HTML
     ?>
     <div class="wrap link-updater-dashboard">
@@ -52,16 +66,33 @@ function daily_link_updater_dashboard() {
                 <p><?php echo esc_html($lastUpdate); ?></p>
             </div>
             <div class="card">
-                <h3>Target Post ID</h3>
-                <p><?php echo get_option('link_updater_post_id', '419'); ?></p>
+                <h3>Configured Posts</h3>
+                <p><?php echo intval($posts_count); ?> posts</p>
+                <a href="<?php echo admin_url('admin.php?page=link-updater-posts'); ?>" class="button button-secondary">
+                    Manage Posts
+                </a>
             </div>
             <div class="card">
                 <h3>Source Status</h3>
-                <p><?php 
-                    $source = 'https://mosttechs.com/monopoly-go-free-dice/';
-                    $status = @get_headers($source) ? 'Online' : 'Offline';
-                    echo $status;
-                ?></p>
+                <?php
+                $sources_status = array();
+                $posts = $wpdb->get_results("SELECT source_url FROM $table_name");
+                foreach ($posts as $post) {
+                    $status = @get_headers($post->source_url) ? 'Online' : 'Offline';
+                    $sources_status[$status][] = $post->source_url;
+                }
+                ?>
+                <p>
+                    <?php
+                    $online_count = isset($sources_status['Online']) ? count($sources_status['Online']) : 0;
+                    $offline_count = isset($sources_status['Offline']) ? count($sources_status['Offline']) : 0;
+                    echo sprintf(
+                        '%d Online, %d Offline',
+                        $online_count,
+                        $offline_count
+                    );
+                    ?>
+                </p>
             </div>
         </div>
 
@@ -119,6 +150,10 @@ function daily_link_updater_dashboard() {
             color: #1d2327;
         }
 
+        .card .button {
+            margin-top: 10px;
+        }
+
         .update-section {
             text-align: center;
             margin: 40px 0;
@@ -135,7 +170,7 @@ function daily_link_updater_dashboard() {
         .update-form button .dashicons {
             line-height: 1;
             font-size: 20px;
-            margin-top: 12px; /* Adjust this to align the icon vertically if needed */
+            margin-top: 12px;
             margin-right: 5px;
         }
 
@@ -175,35 +210,194 @@ function daily_link_updater_dashboard() {
 }
 
 
+// Create posts configuration table on plugin activation
+function link_updater_activate() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'link_updater_posts';
+    
+    $charset_collate = $wpdb->get_charset_collate();
+    
+    $sql = "CREATE TABLE IF NOT EXISTS $table_name (
+        id mediumint(9) NOT NULL AUTO_INCREMENT,
+        post_id mediumint(9) NOT NULL,
+        source_url varchar(255) NOT NULL,
+        post_type varchar(50) NOT NULL,
+        link_patterns text NOT NULL,
+        link_text varchar(255) NOT NULL,
+        PRIMARY KEY  (id)
+    ) $charset_collate;";
+    
+    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+    dbDelta($sql);
+}
+register_activation_hook(__FILE__, 'link_updater_activate');
+
+// Posts management page
+function daily_link_updater_posts_page() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'link_updater_posts';
+    
+    // Handle form submission
+    if (isset($_POST['submit_post']) && check_admin_referer('link_updater_posts_action')) {
+        $post_id = intval($_POST['post_id']);
+        $source_url = esc_url_raw($_POST['source_url']);
+        $post_type = sanitize_text_field($_POST['post_type']);
+        $link_patterns = sanitize_textarea_field($_POST['link_patterns']);
+        $link_text = sanitize_text_field($_POST['link_text']);
+        
+        $wpdb->insert(
+            $table_name,
+            array(
+                'post_id' => $post_id,
+                'source_url' => $source_url,
+                'post_type' => $post_type,
+                'link_patterns' => $link_patterns,
+                'link_text' => $link_text
+            ),
+            array('%d', '%s', '%s', '%s', '%s')
+        );
+        
+        echo '<div class="notice notice-success"><p>Post configuration added successfully!</p></div>';
+    }
+    
+    // Handle deletion
+    if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
+        $id = intval($_GET['id']);
+        $wpdb->delete($table_name, array('id' => $id), array('%d'));
+        echo '<div class="notice notice-success"><p>Post configuration deleted successfully!</p></div>';
+    }
+    
+    // Get existing configurations
+    $posts = $wpdb->get_results("SELECT * FROM $table_name ORDER BY id DESC");
+    ?>
+    <div class="wrap link-updater-posts">
+        <h1>Manage Link Updater Posts</h1>
+        
+        <!-- Add New Post Form -->
+        <div class="card add-new-post">
+            <h2>Add New Post Configuration</h2>
+            <form method="post" action="">
+                <?php wp_nonce_field('link_updater_posts_action'); ?>
+                <table class="form-table">
+                    <tr>
+                        <th><label for="post_id">Post ID</label></th>
+                        <td>
+                            <input type="number" name="post_id" id="post_id" class="regular-text" required>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="source_url">Source URL</label></th>
+                        <td>
+                            <input type="url" name="source_url" id="source_url" class="regular-text" required>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="post_type">Post Type</label></th>
+                        <td>
+                            <input type="text" name="post_type" id="post_type" class="regular-text" required>
+                            <p class="description">E.g., match_masters, hit_it_rich, zynga_poker</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="link_patterns">Link Patterns</label></th>
+                        <td>
+                            <textarea name="link_patterns" id="link_patterns" class="large-text" rows="4" required></textarea>
+                            <p class="description">Enter one pattern per line</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="link_text">Link Text</label></th>
+                        <td>
+                            <input type="text" name="link_text" id="link_text" class="regular-text" required>
+                        </td>
+                    </tr>
+                </table>
+                <p class="submit">
+                    <input type="submit" name="submit_post" class="button button-primary" value="Add Post Configuration">
+                </p>
+            </form>
+        </div>
+        
+        <!-- Existing Posts Table -->
+        <div class="card existing-posts">
+            <h2>Existing Post Configurations</h2>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Post ID</th>
+                        <th>Source URL</th>
+                        <th>Post Type</th>
+                        <th>Link Text</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($posts as $post): ?>
+                    <tr>
+                        <td><?php echo esc_html($post->id); ?></td>
+                        <td><?php echo esc_html($post->post_id); ?></td>
+                        <td><?php echo esc_url($post->source_url); ?></td>
+                        <td><?php echo esc_html($post->post_type); ?></td>
+                        <td><?php echo esc_html($post->link_text); ?></td>
+                        <td>
+                            <a href="<?php echo wp_nonce_url(add_query_arg(array('action' => 'delete', 'id' => $post->id)), 'delete_post_' . $post->id); ?>" 
+                               class="button button-small button-link-delete" 
+                               onclick="return confirm('Are you sure you want to delete this configuration?');">
+                                Delete
+                            </a>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <style>
+        .link-updater-posts .card {
+            max-width: none;
+            margin-top: 20px;
+            padding: 20px;
+        }
+        
+        .link-updater-posts .add-new-post {
+            margin-bottom: 40px;
+        }
+        
+        .link-updater-posts .form-table th {
+            width: 200px;
+        }
+        
+        .link-updater-posts .existing-posts table {
+            margin-top: 20px;
+        }
+    </style>
+    <?php
+}
+
+// Modify PostLinkUpdater class to use dynamic configurations
 class PostLinkUpdater {
-    private $post_configs = [
-        297 => [
-            'url' => 'https://mosttechs.com/match-masters-free-boosters/',
-            'type' => 'match_masters',
-            'link_patterns' => [
-                'https://go.matchmasters.io/',
-                // Add any additional Match Masters patterns here
-            ],
-            'link_text' => 'Collect Free Boosters and Gifts'
-        ],
-        419 => [
-            'url' => 'https://rezortricks.com/hit-it-rich-free-coins/',
-            'type' => 'hit_it_rich',
-            'link_patterns' => [
-                'https://hititrich.onelink.me/',
-                'https://web.hititrich.zynga.com/client/mobile_landing.php'
-            ],
-            'link_text' => 'Collect 2500+ Free Coins'
-        ],
-        271 => [
-            'url' => 'https://mosttechs.com/zynga-poker-free-chips-link/',
-            'type' => 'zynga_poker',
-            'link_patterns' => [
-                'http://zynga.live/'
-            ],
-            'link_text' => 'Collect 3X Free Chips'
-        ]
-    ];
+    private $post_configs = [];
+    
+    public function __construct() {
+        $this->load_post_configs();
+    }
+    
+    private function load_post_configs() {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'link_updater_posts';
+        $posts = $wpdb->get_results("SELECT * FROM $table_name");
+        
+        foreach ($posts as $post) {
+            $this->post_configs[$post->post_id] = array(
+                'url' => $post->source_url,
+                'type' => $post->post_type,
+                'link_patterns' => explode("\n", str_replace("\r", "", $post->link_patterns)),
+                'link_text' => $post->link_text
+            );
+        }
+    }
 
     private $date_formats = [
         'display' => 'F j, Y',          // November 1, 2024
@@ -232,9 +426,65 @@ class PostLinkUpdater {
             case 'zynga_poker':
                 $today_links = $this->extract_zynga_poker_links($html);
                 break;
+            case 'board_kings':
+                $today_links = $this->extract_board_kings_links($html);
+                break;
+            case 'coin_master':
+                $today_links = $this->extract_coin_master_links($html);
+                break;
         }
 
         return $today_links;
+    }
+    
+    private function extract_coin_master_links($html) {
+    $date_pattern = '<h2 class="wp-block-heading">Today&#8217;s Coin Master free spins &amp; coins</h2>';
+    $pos = strpos($html, $date_pattern);
+    
+    if ($pos === false) {
+        custom_log("Could not find section with today's Coin Master links", 'warning');
+        return [];
+    }
+
+    $section_start = $pos;
+    $next_h2_pos = strpos($html, '<h2', $pos + strlen($date_pattern));
+    $section_end = $next_h2_pos !== false ? $next_h2_pos : strlen($html);
+    $section_content = substr($html, $section_start, $section_end - $section_start);
+
+    $links = [];
+    foreach ($this->post_configs[387]['link_patterns'] as $pattern) {
+        preg_match_all('/<a href="(' . preg_quote($pattern, '/') . '[^"]+)"[^>]*>/i', 
+            $section_content, $matches);
+        
+        if (!empty($matches[1])) {
+            $links = array_merge($links, $matches[1]);
+        }
+    }
+    
+    $links = array_unique($links);
+    $links = array_reverse($links);
+    
+    custom_log("Fetched " . count($links) . " links for Coin Master from levvvel.com: " . implode(', ', $links));
+    return $links;
+}
+    
+    private function extract_board_kings_links($html) {
+        $links = [];
+        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
+        
+        foreach ($this->post_configs[230]['link_patterns'] as $pattern) {
+            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
+                preg_quote($date_pattern, '/') . '/i';
+            
+            preg_match_all($regex_pattern, $html, $matches);
+            if (!empty($matches[1])) {
+                $links = array_merge($links, $matches[1]);
+            }
+        }
+        
+        $links = array_unique($links); // Remove duplicates
+        custom_log("Fetched " . count($links) . " links for Board Kings from mosttechs.com: " . implode(', ', $links));
+        return $links;
     }
     
     private function extract_zynga_poker_links($html) {
@@ -270,7 +520,7 @@ class PostLinkUpdater {
     }
     
     $links = array_unique($links); // Remove duplicates
-    custom_log("Fetched " . count($links) . " links from mosttechs.com: " . implode(', ', $links));
+    custom_log("Fetched " . count($links) . " links for Match Masters from mosttechs.com: " . implode(', ', $links));
     return $links;
 }
 
@@ -388,7 +638,7 @@ private function extract_hit_it_rich_links($html) {
         $html = "<ol>\n";
         foreach ($links as $link) {
             $html .= sprintf(
-                '    <li><a href="%s" target="_blank" rel="noopener">%s</a></li>' . "\n",
+                '<li><a href="%s" target="_blank" rel="noopener"><strong>%s</strong></a></li>' . "\n",
                 esc_url($link),
                 $link_text
             );
