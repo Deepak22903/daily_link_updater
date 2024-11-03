@@ -9,6 +9,29 @@ Author URI: https://peekdeep.com/author/deepak/
 License: GPL2
 */
 
+// Register custom cron schedule
+function register_link_updater_cron_interval($schedules) {
+    $schedules['thirty_minutes'] = array(
+        'interval' => 1800, // 30 minutes in seconds
+        'display'  => 'Every 30 Minutes'
+    );
+    return $schedules;
+}
+add_filter('cron_schedules', 'register_link_updater_cron_interval');
+
+// Schedule the cron event
+function schedule_link_updater() {
+    if (!wp_next_scheduled('run_link_updater')) {
+        wp_schedule_event(time(), 'thirty_minutes', 'run_link_updater');
+    }
+}
+
+// Hook for the cron event
+function run_link_updater_cron() {
+    daily_update_links();
+}
+add_action('run_link_updater', 'run_link_updater_cron');
+
 // Add main menu page
 function daily_link_updater_menu() {
     add_menu_page(
@@ -49,6 +72,9 @@ function daily_link_updater_dashboard() {
     // Get last update time
     $lastUpdate = get_option('link_updater_last_run', 'Never');
     
+    // Get next scheduled update
+    $nextUpdate = wp_next_scheduled('run_link_updater');
+    
     // Get configured posts count
     global $wpdb;
     $table_name = $wpdb->prefix . 'link_updater_posts';
@@ -64,6 +90,14 @@ function daily_link_updater_dashboard() {
             <div class="card">
                 <h3>Last Update</h3>
                 <p><?php echo esc_html($lastUpdate); ?></p>
+            </div>
+            <div class="card">
+                <h3>Next Scheduled Update</h3>
+                <p><?php echo $nextUpdate ? date('Y-m-d H:i:s', $nextUpdate) : 'Not scheduled'; ?></p>
+            </div>
+            <div class="card">
+                <h3>Update Frequency</h3>
+                <p>Every 30 minutes</p>
             </div>
             <div class="card">
                 <h3>Configured Posts</h3>
@@ -210,7 +244,7 @@ function daily_link_updater_dashboard() {
 }
 
 
-// Create posts configuration table on plugin activation
+// Modify your existing activation function to include cron setup
 function link_updater_activate() {
     global $wpdb;
     $table_name = $wpdb->prefix . 'link_updater_posts';
@@ -229,8 +263,32 @@ function link_updater_activate() {
     
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
     dbDelta($sql);
+    
+    // Schedule the cron job
+    schedule_link_updater();
+    
+    // Create log directory if it doesn't exist
+    $logDir = WP_CONTENT_DIR . '/plugin-logs';
+    if (!file_exists($logDir)) {
+        mkdir($logDir, 0755, true);
+    }
+    
+    // Log activation
+    custom_log('Link Updater plugin activated with 30-minute schedule', 'info');
 }
+
+
 register_activation_hook(__FILE__, 'link_updater_activate');
+
+// Add deactivation hook
+function link_updater_deactivate() {
+    // Clear the scheduled hook
+    wp_clear_scheduled_hook('run_link_updater');
+    
+    // Log deactivation
+    custom_log('Link Updater plugin deactivated', 'info');
+}
+register_deactivation_hook(__FILE__, 'link_updater_deactivate');
 
 // Posts management page
 function daily_link_updater_posts_page() {
@@ -376,6 +434,20 @@ function daily_link_updater_posts_page() {
     <?php
 }
 
+
+
+// Add a function to check if cron is running properly
+function check_link_updater_cron_status() {
+    if (defined('DOING_CRON') && DOING_CRON) {
+        custom_log('Cron job is running', 'info');
+    }else{
+        custom_log('Cron job is NOT running','warning');
+    }
+}
+add_action('run_link_updater', 'check_link_updater_cron_status', 1);
+
+
+
 // Modify PostLinkUpdater class to use dynamic configurations
 class PostLinkUpdater {
     private $post_configs = [];
@@ -402,6 +474,7 @@ class PostLinkUpdater {
     private $date_formats = [
         'display' => 'F j, Y',          // November 1, 2024
         'dot' => 'j.n.Y',              // 1.11.2024
+        'dot_alt' => 'd.n.y',              // 01.11.24
         'ordinal' => 'jS F, Y',        // 1st November, 2024
         'underscore' => 'jS_F_Y',      // 1st_November_2024
         'id' => 'F_j_Y'                // November_1_2024
@@ -432,9 +505,394 @@ class PostLinkUpdater {
             case 'coin_master':
                 $today_links = $this->extract_coin_master_links($html);
                 break;
+            case 'bingo_bash':
+                $today_links = $this->extract_bingo_bash_links($html);
+                break;
+            case 'house_of_fun':
+                $today_links = $this->extract_house_of_fun_links($html);
+                break;
+            case 'pop_slots':
+                $today_links = $this->extract_pop_slots_links($html);
+                break;
+            case 'solitaire_grand_harvest':
+                $today_links = $this->extract_solitaire_grand_harvest_links($html);
+                break;
+            case 'coin_tales':
+                $today_links = $this->extract_coin_tales_links($html);
+                break;
+            case 'jackpot_party':
+                $today_links = $this->extract_jackpot_party_links($html);
+                break;
+            case 'crazy_fox':
+                $today_links = $this->extract_crazy_fox_links($html);
+                break;
+            case 'heart_of_vegas':
+                $today_links = $this->extract_heart_of_vegas_links($html);
+                break;
+            case 'cash_frenzy':
+                $today_links = $this->extract_cash_frenzy_links($html);
+                break;
+            case 'wsop_chips':
+                $today_links = $this->extract_wsop_chips_links($html);
+                break;
+            case 'caesars_casino':
+                $today_links = $this->extract_caesars_casino_links($html);
+                break;
+            case 'doubleu_casino':
+                $today_links = $this->extract_doubleu_casino_links($html);
+                break;
+            case 'doubledown_casino':
+                $today_links = $this->extract_doubledown_casino_links($html);
+                break;
+            case 'huuuge_casino':
+                $today_links = $this->extract_huuuge_casino_links($html);
+                break;
+            case 'quick_hit_slots':
+                $today_links = $this->extract_quick_hit_slots_links($html);
+                break;
+            case 'bingo_blitz':
+                $today_links = $this->extract_bingo_blitz_links($html);
+                break;
+            case 'slotomania':
+                $today_links = $this->extract_slotomania_links($html);
+                break;
         }
 
         return $today_links;
+    }
+    
+    private function extract_slotomania_links($html) {
+        $links = [];
+        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
+        
+        foreach ($this->post_configs[1907]['link_patterns'] as $pattern) {
+            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
+                preg_quote($date_pattern, '/') . '/i';
+            
+            preg_match_all($regex_pattern, $html, $matches);
+            if (!empty($matches[1])) {
+                $links = array_merge($links, $matches[1]);
+            }
+        }
+        
+        $links = array_unique($links); // Remove duplicates
+        custom_log("Fetched " . count($links) . " links for Slotomania from mosttechs.com: " . implode(', ', $links));
+        return $links;
+    }
+    
+    private function extract_bingo_blitz_links($html) {
+        $links = [];
+        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
+        
+        foreach ($this->post_configs[1910]['link_patterns'] as $pattern) {
+            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
+                preg_quote($date_pattern, '/') . '/i';
+            
+            preg_match_all($regex_pattern, $html, $matches);
+            if (!empty($matches[1])) {
+                $links = array_merge($links, $matches[1]);
+            }
+        }
+        
+        $links = array_unique($links); // Remove duplicates
+        custom_log("Fetched " . count($links) . " links for Bingo Blitz from mosttechs.com: " . implode(', ', $links));
+        return $links;
+    }
+    
+    private function extract_quick_hit_slots_links($html) {
+        $links = [];
+        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
+        
+        foreach ($this->post_configs[1912]['link_patterns'] as $pattern) {
+            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
+                preg_quote($date_pattern, '/') . '/i';
+            
+            preg_match_all($regex_pattern, $html, $matches);
+            if (!empty($matches[1])) {
+                $links = array_merge($links, $matches[1]);
+            }
+        }
+        
+        $links = array_unique($links); // Remove duplicates
+        custom_log("Fetched " . count($links) . " links for Quick Hit Slots from mosttechs.com: " . implode(', ', $links));
+        return $links;
+    }
+    
+    private function extract_huuuge_casino_links($html) {
+        $links = [];
+        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
+        
+        foreach ($this->post_configs[1914]['link_patterns'] as $pattern) {
+            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
+                preg_quote($date_pattern, '/') . '/i';
+            
+            preg_match_all($regex_pattern, $html, $matches);
+            if (!empty($matches[1])) {
+                $links = array_merge($links, $matches[1]);
+            }
+        }
+        
+        $links = array_unique($links); // Remove duplicates
+        custom_log("Fetched " . count($links) . " links for Huuuge Casino from mosttechs.com: " . implode(', ', $links));
+        return $links;
+    }
+    
+    
+    private function extract_doubledown_casino_links($html) {
+        $links = [];
+        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
+        
+        foreach ($this->post_configs[1916]['link_patterns'] as $pattern) {
+            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
+                preg_quote($date_pattern, '/') . '/i';
+            
+            preg_match_all($regex_pattern, $html, $matches);
+            if (!empty($matches[1])) {
+                $links = array_merge($links, $matches[1]);
+            }
+        }
+        
+        $links = array_unique($links); // Remove duplicates
+        custom_log("Fetched " . count($links) . " links for DoubleDown Casino from mosttechs.com: " . implode(', ', $links));
+        return $links;
+    }
+    
+    
+    private function extract_doubleu_casino_links($html) {
+        $links = [];
+        $date_pattern = date($this->date_formats['dot_alt']); // Using dot format: "01.11.24"
+        
+        foreach ($this->post_configs[1919]['link_patterns'] as $pattern) {
+            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
+                preg_quote($date_pattern, '/') . '/i';
+            
+            preg_match_all($regex_pattern, $html, $matches);
+            if (!empty($matches[1])) {
+                $links = array_merge($links, $matches[1]);
+            }
+        }
+        
+        $links = array_unique($links); // Remove duplicates
+        custom_log("Fetched " . count($links) . " links for DoubleU Casino from crazyashwin.com: " . implode(', ', $links));
+        return $links;
+    }
+    
+    private function extract_caesars_casino_links($html) {
+        $links = [];
+        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
+        
+        foreach ($this->post_configs[1904]['link_patterns'] as $pattern) {
+            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
+                preg_quote($date_pattern, '/') . '/i';
+            
+            preg_match_all($regex_pattern, $html, $matches);
+            if (!empty($matches[1])) {
+                $links = array_merge($links, $matches[1]);
+            }
+        }
+        
+        $links = array_unique($links); // Remove duplicates
+        custom_log("Fetched " . count($links) . " links for Caesars Casino from mosttechs.com: " . implode(', ', $links));
+        return $links;
+    }
+    
+    private function extract_wsop_chips_links($html) {
+    $links = [];
+    $date_pattern = date($this->date_formats['display']); // Using display format: "November 3, 2024"
+    
+    // Convert date pattern to the format used in the HTML (d F Y)
+    $html_date = date('d F Y'); // "03 November 2024"
+    
+    // Find section with today's date heading
+    $section_pattern = '/<p[^>]*><strong>' . preg_quote($html_date, '/') . 
+        '<\/strong><\/p>\s*<ol[^>]*>(.*?)(?=<p[^>]*><strong>|$)/is';
+            
+    if (preg_match($section_pattern, $html, $section_match)) {
+        foreach ($this->post_configs[1902]['link_patterns'] as $pattern) {
+            // Match links from the section that match the pattern
+            $link_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)"[^>]*>(?:\d+\+\s+)?Free\s+(?:Chips|Cards)<\/a>/i';
+            
+            preg_match_all($link_pattern, $section_match[1], $matches);
+            if (!empty($matches[1])) {
+                $links = array_merge($links, $matches[1]);
+            }
+        }
+    }
+    
+    $links = array_unique($links); // Remove duplicates
+    custom_log("Fetched " . count($links) . " links for WSOP Chips from freechipswsop.com: " . implode(', ', $links));
+    return $links;
+}
+    
+    private function extract_cash_frenzy_links($html) {
+        $links = [];
+        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
+        
+        foreach ($this->post_configs[1899]['link_patterns'] as $pattern) {
+            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
+                preg_quote($date_pattern, '/') . '/i';
+            
+            preg_match_all($regex_pattern, $html, $matches);
+            if (!empty($matches[1])) {
+                $links = array_merge($links, $matches[1]);
+            }
+        }
+        
+        $links = array_unique($links); // Remove duplicates
+        custom_log("Fetched " . count($links) . " links for Cash Frenzy from mosttechs.com: " . implode(', ', $links));
+        return $links;
+    }
+    
+    private function extract_heart_of_vegas_links($html) {
+        $links = [];
+        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
+        
+        foreach ($this->post_configs[1893]['link_patterns'] as $pattern) {
+            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
+                preg_quote($date_pattern, '/') . '/i';
+            
+            preg_match_all($regex_pattern, $html, $matches);
+            if (!empty($matches[1])) {
+                $links = array_merge($links, $matches[1]);
+            }
+        }
+        
+        $links = array_unique($links); // Remove duplicates
+        custom_log("Fetched " . count($links) . " links for Heart of Vegas from mosttechs.com: " . implode(', ', $links));
+        return $links;
+    }
+    
+    private function extract_crazy_fox_links($html) {
+        $links = [];
+        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
+        
+        foreach ($this->post_configs[1891]['link_patterns'] as $pattern) {
+            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
+                preg_quote($date_pattern, '/') . '/i';
+            
+            preg_match_all($regex_pattern, $html, $matches);
+            if (!empty($matches[1])) {
+                $links = array_merge($links, $matches[1]);
+            }
+        }
+        
+        $links = array_unique($links); // Remove duplicates
+        custom_log("Fetched " . count($links) . " links for Crazy Fox from mosttechs.com: " . implode(', ', $links));
+        return $links;
+    }
+    
+    private function extract_jackpot_party_links($html) {
+        $links = [];
+        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
+        
+        foreach ($this->post_configs[1888]['link_patterns'] as $pattern) {
+            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
+                preg_quote($date_pattern, '/') . '/i';
+            
+            preg_match_all($regex_pattern, $html, $matches);
+            if (!empty($matches[1])) {
+                $links = array_merge($links, $matches[1]);
+            }
+        }
+        
+        $links = array_unique($links); // Remove duplicates
+        custom_log("Fetched " . count($links) . " links for Jackpot Party from mosttechs.com: " . implode(', ', $links));
+        return $links;
+    }
+    
+    private function extract_coin_tales_links($html) {
+    $links = [];
+    $today = date('d F Y'); // Format: "03 November 2024"
+    
+    // Pattern to match heading with today's date and get the following link
+    $regex_pattern = '/<h4[^>]*>.*?' . preg_quote($today, '/') . 
+        '.*?<\/h4>.*?<a\s+href="([^"]+)".*?>/is';
+    
+    if (preg_match($regex_pattern, $html, $match)) {
+        if (!empty($match[1])) {
+            $links[] = $match[1];
+        }
+    }
+    
+    $links = array_unique($links); // Remove duplicates (though we expect only one)
+    custom_log("Fetched " . count($links) . " links for Coin Tales: " . implode(', ', $links));
+    return $links;
+}
+    
+    private function extract_solitaire_grand_harvest_links($html) {
+        $links = [];
+        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
+        
+        foreach ($this->post_configs[1807]['link_patterns'] as $pattern) {
+            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
+                preg_quote($date_pattern, '/') . '/i';
+            
+            preg_match_all($regex_pattern, $html, $matches);
+            if (!empty($matches[1])) {
+                $links = array_merge($links, $matches[1]);
+            }
+        }
+        
+        $links = array_unique($links); // Remove duplicates
+        custom_log("Fetched " . count($links) . " links for Solitaire Grand Harvest from mosttechs.com: " . implode(', ', $links));
+        return $links;
+    }
+    
+    private function extract_pop_slots_links($html) {
+        $links = [];
+        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
+        
+        foreach ($this->post_configs[1785]['link_patterns'] as $pattern) {
+            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
+                preg_quote($date_pattern, '/') . '/i';
+            
+            preg_match_all($regex_pattern, $html, $matches);
+            if (!empty($matches[1])) {
+                $links = array_merge($links, $matches[1]);
+            }
+        }
+        
+        $links = array_unique($links); // Remove duplicates
+        custom_log("Fetched " . count($links) . " links for Pop Slots from mosttechs.com: " . implode(', ', $links));
+        return $links;
+    }
+    
+    private function extract_house_of_fun_links($html) {
+        $links = [];
+        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
+        
+        foreach ($this->post_configs[1751]['link_patterns'] as $pattern) {
+            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
+                preg_quote($date_pattern, '/') . '/i';
+            
+            preg_match_all($regex_pattern, $html, $matches);
+            if (!empty($matches[1])) {
+                $links = array_merge($links, $matches[1]);
+            }
+        }
+        
+        $links = array_unique($links); // Remove duplicates
+        custom_log("Fetched " . count($links) . " links for House of Fun from mosttechs.com: " . implode(', ', $links));
+        return $links;
+    }
+    
+    private function extract_bingo_bash_links($html) {
+        $links = [];
+        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
+        
+        foreach ($this->post_configs[316]['link_patterns'] as $pattern) {
+            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
+                preg_quote($date_pattern, '/') . '/i';
+            
+            preg_match_all($regex_pattern, $html, $matches);
+            if (!empty($matches[1])) {
+                $links = array_merge($links, $matches[1]);
+            }
+        }
+        
+        $links = array_unique($links); // Remove duplicates
+        custom_log("Fetched " . count($links) . " links for Bingo Bash from mosttechs.com: " . implode(', ', $links));
+        return $links;
     }
     
     private function extract_coin_master_links($html) {
@@ -555,7 +1013,7 @@ private function extract_hit_it_rich_links($html) {
     return $links;
 }
 
-    private function update_post_content($content, $today_heading, $links, $config) {
+   private function update_post_content($content, $today_heading, $links, $config) {
     $today_date = date($this->date_formats['display']);
     $content_modified = false;
     
@@ -569,38 +1027,37 @@ private function extract_hit_it_rich_links($html) {
         
         $current_section = substr($content, $heading_pos, $section_end - $heading_pos);
         
-        // Count existing links for all patterns
-        $existing_links_count = 0;
+        // Extract existing links from the current section
+        $existing_links = array();
         foreach ($config['link_patterns'] as $pattern) {
-            preg_match_all('/<a href="' . preg_quote($pattern, '/') . '[^"]+"/i', $current_section, $existing_matches);
-            $existing_links_count += count($existing_matches[0]);
+            if (preg_match_all('/<a href="(' . preg_quote($pattern, '/') . '[^"]+)"/i', $current_section, $existing_matches)) {
+                $existing_links = array_merge($existing_links, $existing_matches[1]);
+            }
         }
         
-        if (count($links) > $existing_links_count) {
-            $new_links = array_slice($links, $existing_links_count);
+        // Find new unique links
+        $new_links = array_filter($links, function($link) use ($existing_links) {
+            return !in_array($link, $existing_links);
+        });
+        
+        if (!empty($new_links)) {
+            // Combine new links (at the top) with existing links
+            $all_links = array_merge($new_links, $existing_links);
             
-            if (preg_match('/<ul>(.*?)<\/ul>/s', $current_section)) {
-                $ul_end_pos = strrpos($current_section, '</ul>');
-                $additional_links_html = '';
-                foreach ($new_links as $link) {
-                    $additional_links_html .= sprintf(
-                        '<li><a href="%s" target="_blank" rel="noopener">%s</a></li>' . "\n",
-                        esc_url($link),
-                        $config['link_text']
-                    );
-                }
-                $updated_section = substr_replace($current_section, $additional_links_html, $ul_end_pos, 0);
-            } else {
-                $updated_section = $current_section . $this->generate_links_html($new_links, $config['link_text']);
-            }
+            // Remove the existing ordered list
+            $current_section = preg_replace('/<ol>.*?<\/ol>/s', '', $current_section);
+            
+            // Generate new ordered list with combined links
+            $updated_section = $current_section . $this->generate_links_html($all_links, $config['link_text']);
             
             $content = substr_replace($content, $updated_section, $heading_pos, $section_end - $heading_pos);
-            custom_log("Added " . count($new_links) . " new links to existing section for $today_date");
+            custom_log("Added " . count($new_links) . " new unique links to top of existing section for $today_date");
             $content_modified = true;
         } else {
-            custom_log("Section for $today_date is already up to date. No new links to add.", 'info');
+            custom_log("No new unique links found for $today_date", 'info');
         }
     } else {
+        // No existing section for today, create a new one
         if (preg_match('/<h4[^>]*>/', $content, $matches, PREG_OFFSET_CAPTURE)) {
             $first_h4_pos = $matches[0][1];
             $new_section = $today_heading . "\n" . $this->generate_links_html($links, $config['link_text']);
@@ -616,7 +1073,6 @@ private function extract_hit_it_rich_links($html) {
     
     return ['content' => $content, 'modified' => $content_modified];
 }
-
     private function generate_heading($date) {
         return sprintf(
             '<h4 class="wp-block-heading has-text-color has-link-color wp-elements-f2ac3daac33216e856b046520ec53ee3" style="color:#008effe6">' .
