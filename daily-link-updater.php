@@ -632,9 +632,6 @@ class PostLinkUpdater {
             case 'dice_dreams':
                 $today_links = $this->extract_dice_dreams_links($html);
                 break;
-            case 'monopoly_go':
-                $today_links = $this->extract_monopoly_go_links($html);
-                break;
             case 'island_king':
                 $today_links = $this->extract_island_king_links($html);
                 break;
@@ -685,30 +682,6 @@ class PostLinkUpdater {
         return $links;
     }
     
-    private function extract_monopoly_go_links($html) {
-    $links = [];
-    $date = date('d F Y'); // Format: "02 November 2024"
-    
-    foreach ($this->post_configs[1968]['link_patterns'] as $pattern) {
-        // Match section between heading with today's date and next heading
-        $section_pattern = '/<h4[^>]*>.*?Updated On: ' . preg_quote($date, '/') . 
-            '.*?<\/h4>(.*?)(?=<h4|$)/si';
-        
-        if (preg_match($section_pattern, $html, $section)) {
-            // Extract href links from the matched section
-            $link_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>/i';
-            preg_match_all($link_pattern, $section[1], $matches);
-            
-            if (!empty($matches[1])) {
-                $links = array_merge($links, $matches[1]);
-            }
-        }
-    }
-    
-    $links = array_unique($links); // Remove duplicates
-    custom_log("Fetched " . count($links) . " links for Monopoly Go from coinscrazy.com: " . implode(', ', $links));
-    return $links;
-}
     
     private function extract_dice_dreams_links($html) {
     $links = [];
@@ -1048,9 +1021,9 @@ class PostLinkUpdater {
     
     private function extract_big_fish_links($html) {
         $links = [];
-        $date_pattern = date($this->date_formats['dot_alt_2']); // Using dot format: "01.11.2024"
+        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
         
-        foreach ($this->post_configs[2010]['link_patterns'] as $pattern) {
+        foreach ($this->post_configs[1982]['link_patterns'] as $pattern) {
             $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
                 preg_quote($date_pattern, '/') . '/i';
             
@@ -1061,7 +1034,7 @@ class PostLinkUpdater {
         }
         
         $links = array_unique($links); // Remove duplicates
-        custom_log("Fetched " . count($links) . " links for Big Fish from techyhigher.com: " . implode(', ', $links));
+        custom_log("Fetched " . count($links) . " links for Big Fish from mosttechs.com: " . implode(', ', $links));
         return $links;
     }
     
@@ -1526,59 +1499,16 @@ class PostLinkUpdater {
     }
     
     private function extract_house_of_fun_links($html) {
-        $links = [];
-        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
-        
-        foreach ($this->post_configs[1751]['link_patterns'] as $pattern) {
-            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
-                preg_quote($date_pattern, '/') . '/i';
-            
-            preg_match_all($regex_pattern, $html, $matches);
-            if (!empty($matches[1])) {
-                $links = array_merge($links, $matches[1]);
-            }
-        }
-        
-        $links = array_unique($links); // Remove duplicates
-        custom_log("Fetched " . count($links) . " links for House of Fun from mosttechs.com: " . implode(', ', $links));
-        return $links;
-    }
-    
-    private function extract_bingo_bash_links($html) {
-        $links = [];
-        $date_pattern = date($this->date_formats['dot']); // Using dot format: "1.11.2024"
-        
-        foreach ($this->post_configs[316]['link_patterns'] as $pattern) {
-            $regex_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)".*?>.*?' . 
-                preg_quote($date_pattern, '/') . '/i';
-            
-            preg_match_all($regex_pattern, $html, $matches);
-            if (!empty($matches[1])) {
-                $links = array_merge($links, $matches[1]);
-            }
-        }
-        
-        $links = array_unique($links); // Remove duplicates
-        custom_log("Fetched " . count($links) . " links for Bingo Bash from mosttechs.com: " . implode(', ', $links));
-        return $links;
-    }
-    
-    private function extract_coin_master_links($html) {
-    $date_pattern = '<h2 class="wp-block-heading">Today&#8217;s Coin Master free spins &amp; coins</h2>';
+    $date_pattern = '<span id="HOF_todays_free_coins_and_spins_link-_' . date($this->date_formats['underscore']) . '">';
     $pos = strpos($html, $date_pattern);
-    
-    if ($pos === false) {
-        custom_log("Could not find section with today's Coin Master links", 'warning');
-        return [];
-    }
 
     $section_start = $pos;
-    $next_h2_pos = strpos($html, '<h2', $pos + strlen($date_pattern));
-    $section_end = $next_h2_pos !== false ? $next_h2_pos : strlen($html);
+    $next_h4_pos = strpos($html, '<h4', $pos + strlen($date_pattern));
+    $section_end = $next_h4_pos !== false ? $next_h4_pos : strlen($html);
     $section_content = substr($html, $section_start, $section_end - $section_start);
 
     $links = [];
-    foreach ($this->post_configs[387]['link_patterns'] as $pattern) {
+    foreach ($this->post_configs[419]['link_patterns'] as $pattern) {
         preg_match_all('/<a href="(' . preg_quote($pattern, '/') . '[^"]+)"[^>]*>/i', 
             $section_content, $matches);
         
@@ -1590,7 +1520,82 @@ class PostLinkUpdater {
     $links = array_unique($links);
     $links = array_reverse($links);
     
-    custom_log("Fetched " . count($links) . " links for Coin Master from levvvel.com: " . implode(', ', $links));
+    custom_log("Fetched " . count($links) . " links for House of Fun from rezortricks.com: " . implode(', ', $links));
+    return $links;
+}
+    
+    private function extract_bingo_bash_links($html) {
+    // Create a new DOMDocument
+    $dom = new DOMDocument();
+    
+    // Suppress warnings for malformed HTML
+    @$dom->loadHTML($html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+    
+    $date_string = 'Free Chips – ' . date($this->date_formats['human']);
+    
+    // Find all h4 elements with the specific date
+    $xpath = new DOMXPath($dom);
+    $h4_elements = $xpath->query("//h4[contains(., '{$date_string}')]");
+    
+    $links = [];
+    
+    // If no matching h4 found, log and return empty
+    if ($h4_elements->length == 0) {
+        custom_log("Could not find section with today's date pattern", 'warning');
+        return [];
+    }
+    
+    // Get the first matching h4 element
+    $target_h4 = $h4_elements->item(0);
+    
+    // Find all links in the section after this h4
+    $current = $target_h4;
+    while ($current = $current->nextSibling) {
+        // Stop if we hit the next h4 (end of section)
+        if ($current->nodeName === 'h4') {
+            break;
+        }
+        
+        // Only process element nodes
+        if ($current->nodeType === XML_ELEMENT_NODE) {
+            $anchors = $current->getElementsByTagName('a');
+            foreach ($anchors as $anchor) {
+                $href = $anchor->getAttribute('href');
+                $links[] = $href;
+            }
+        }
+    }
+    
+    // Remove duplicates, reverse order
+    $links = array_values(array_unique($links));
+    $links = array_reverse($links);
+    
+    custom_log("Fetched " . count($links) . " links Bingo Bash from rezortricks.com: " . implode(', ', $links));
+    return $links;
+}
+        
+    private function extract_coin_master_links($html) {
+    $links = [];
+    
+    // Match the section with the "Today CM free spins links" heading
+    $section_pattern = '/<h2>Today CM free spins links - <span id="currentDate">(.*?)<\/span><\/h2>(.*?)(?=<h[23]|$)/si';
+    if (preg_match($section_pattern, $html, $matches)) {
+        $date = $matches[1];
+        
+        // Check each configured link pattern
+        foreach ($this->post_configs[387]['link_patterns'] as $pattern) {
+            // Extract href links from the matched section that match the pattern
+            $link_pattern = '/<a\s+href="(' . preg_quote($pattern, '/') . '[^"]+)"[^>]*>/i';
+            preg_match_all($link_pattern, $matches[2], $link_matches);
+            
+            if (!empty($link_matches[1])) {
+                $links = array_merge($links, $link_matches[1]);
+            }
+        }
+    }
+    
+    $links = array_unique($links); // Remove duplicates
+    custom_log("Fetched " . count($links) . " links for Coin Master from crazyashwin.com: " . implode(', ', $links));
     return $links;
 }
     
@@ -1704,9 +1709,7 @@ private function extract_hit_it_rich_links($html) {
         }
         
         // Find new unique links
-        $new_links = array_filter($links, function($link) use ($existing_links) {
-            return !in_array($link, $existing_links);
-        });
+        $new_links = array_diff($links, $existing_links);
         
         if (!empty($new_links)) {
             // Combine new links (at the top) with existing links
@@ -1842,11 +1845,19 @@ private function validate_config($config) {
 
 // Usage
 function daily_update_links() {
-    $updater = new PostLinkUpdater();
-    $updater->run_updates();
+    try {
+        // Initialize the PostLinkUpdater class
+        $updater = new PostLinkUpdater();
+        
+        // Run the updates
+        $updater->run_updates();
+        
+    } catch (Exception $e) {
+        // Log the error message
+        custom_log('Error in daily_update_links: ' . $e->getMessage());
+        
+    }
 }
-
-
 
 // Modified logging function to handle different message types
 function custom_log($message, $type = 'info') {
