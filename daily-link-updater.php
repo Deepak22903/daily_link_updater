@@ -1498,23 +1498,19 @@ class PostLinkUpdater {
         return $links;
     }
     
-    private function extract_house_of_fun_links($html) {
+private function extract_house_of_fun_links($html) {
     $date_pattern = '<span id="HOF_todays_free_coins_and_spins_link-_' . date($this->date_formats['underscore']) . '">';
     $pos = strpos($html, $date_pattern);
-
     $section_start = $pos;
     $next_h4_pos = strpos($html, '<h4', $pos + strlen($date_pattern));
     $section_end = $next_h4_pos !== false ? $next_h4_pos : strlen($html);
     $section_content = substr($html, $section_start, $section_end - $section_start);
-
     $links = [];
-    foreach ($this->post_configs[419]['link_patterns'] as $pattern) {
-        preg_match_all('/<a href="(' . preg_quote($pattern, '/') . '[^"]+)"[^>]*>/i', 
-            $section_content, $matches);
-        
-        if (!empty($matches[1])) {
-            $links = array_merge($links, $matches[1]);
-        }
+    
+    preg_match_all('/<a href="([^"]+)"[^>]*>/i', $section_content, $matches);
+    
+    if (!empty($matches[1])) {
+        $links = $matches[1];
     }
     
     $links = array_unique($links);
