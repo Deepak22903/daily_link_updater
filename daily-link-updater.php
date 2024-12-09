@@ -1682,64 +1682,57 @@ private function extract_hit_it_rich_links($html) {
     return $links;
 }
 
-   private function update_post_content($content, $today_heading, $links, $config) {
-    $today_date = date($this->date_formats['display']);
-    $content_modified = false;
-    
-    // Check if today's heading exists
-    if (preg_match('/<h4[^>]*>.*?' . preg_quote($today_date, '/') . '.*?<\/h4>/s', $content, $heading_matches, PREG_OFFSET_CAPTURE)) {
-        $heading_pos = $heading_matches[0][1];
-        $heading_end = $heading_pos + strlen($heading_matches[0][0]);
+private function update_post_content($content, $today_heading, $links, $config) {
+        $today_date = date($this->date_formats['display']);
+        $content_modified = false;
         
-        $next_heading_pos = stripos($content, '<h4', $heading_end);
-        $section_end = $next_heading_pos !== false ? $next_heading_pos : strlen($content);
+        // Check if today's heading already exists
+        if (strpos($content, $today_date) !== false) {
+            custom_log("Today's heading already exists.", 'info');
+            return ['content' => $content, 'modified' => $content_modified];
+        }
         
-        $current_section = substr($content, $heading_pos, $section_end - $heading_pos);
+        // Find all existing date headings with their full sections
+        preg_match_all('/<h4[^>]*>.*?(\d{1,2}\s+\w+\s+\d{4}).*?<\/h4>.*?(?=<h4|$)/s', $content, $date_matches, PREG_SET_ORDER);
         
-        // Extract existing links from the current section
-        $existing_links = array();
-        foreach ($config['link_patterns'] as $pattern) {
-            if (preg_match_all('/<a href="(' . preg_quote($pattern, '/') . '[^"]+)"/i', $current_section, $existing_matches)) {
-                $existing_links = array_merge($existing_links, $existing_matches[1]);
+        // If we have more than 5 dates, remove all older dates
+        if (count($date_matches) > 5) {
+            // Keep only the 5 most recent dates
+            $dates_to_keep = array_slice($date_matches, -5);
+            
+            // Remove all sections before the 5 most recent dates
+            foreach ($date_matches as $match) {
+                if (!in_array($match, $dates_to_keep)) {
+                    $content = str_replace($match[0], '', $content);
+                }
             }
+            
+            custom_log("Removed dates older than the 5 most recent", 'info');
         }
         
-        // Find new unique links
-        $new_links = array_diff($links, $existing_links);
+        // Find the position after the first h2 header
+        if (preg_match('/<h2[^>]*>.*?<\/h2>/s', $content, $matches, PREG_OFFSET_CAPTURE)) {
+            $first_h2_end = $matches[0][1] + strlen($matches[0][0]);
+            
+            // Prepare the new section with today's heading and links
+            $new_section = "\n" . $today_heading . "\n";
+            
+            // Add links if available
+            if (!empty($links)) {
+                $new_section .= $this->generate_links_html($links, $config['link_text']);
+                custom_log("Added " . count($links) . " new links under today's heading");
+            }
+            
+            // Insert the new section after the first h2 header
+            $content = substr_replace($content, $new_section, $first_h2_end, 0);
+            $content_modified = true;
+        } else {
+            // Do nothing if no h2 header is found
+            custom_log("No h2 header found. Skipping link addition.", 'warning');
+        }
         
-        if (!empty($new_links)) {
-            // Combine new links (at the top) with existing links
-            $all_links = array_merge($new_links, $existing_links);
-            
-            // Remove the existing ordered list
-            $current_section = preg_replace('/<ol>.*?<\/ol>/s', '', $current_section);
-            
-            // Generate new ordered list with combined links
-            $updated_section = $current_section . $this->generate_links_html($all_links, $config['link_text']);
-            
-            $content = substr_replace($content, $updated_section, $heading_pos, $section_end - $heading_pos);
-            custom_log("Added " . count($new_links) . " new unique links to top of existing section for $today_date");
-            $content_modified = true;
-        } else {
-            custom_log("No new unique links found for $today_date", 'info');
-        }
-    } else {
-        // No existing section for today, create a new one
-        if (preg_match('/<h4[^>]*>/', $content, $matches, PREG_OFFSET_CAPTURE)) {
-            $first_h4_pos = $matches[0][1];
-            $new_section = $today_heading . "\n" . $this->generate_links_html($links, $config['link_text']);
-            $content = substr_replace($content, $new_section, $first_h4_pos, 0);
-            custom_log("Created new section for $today_date at the top");
-            $content_modified = true;
-        } else {
-            $content = $today_heading . "\n" . $this->generate_links_html($links, $config['link_text']) . $content;
-            custom_log("No existing headings found, added new section at the beginning");
-            $content_modified = true;
-        }
+        return ['content' => $content, 'modified' => $content_modified];
     }
-    
-    return ['content' => $content, 'modified' => $content_modified];
-}
     private function generate_heading($date) {
         return sprintf(
             '<h4 class="wp-block-heading has-text-color has-link-color wp-elements-f2ac3daac33216e856b046520ec53ee3" style="color:#008effe6">' .
